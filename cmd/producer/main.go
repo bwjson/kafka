@@ -3,32 +3,37 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
-
 	"github.com/bwjson/kafka/internal/handler"
 	"github.com/bwjson/kafka/internal/producer"
+	"log"
+)
+
+const (
+	topicName = "users.events"
+)
+
+var (
+	events = []string{"registration", "login", "subscription"}
 )
 
 func main() {
 	ctx := context.Background()
 
-	log.Print("start")
-
 	p, err := producer.NewProducer(producer.Config{
 		Brokers:  []string{"localhost:9092"},
-		ClientID: "playground-producer",
+		ClientID: "users-producer",
 	})
 	if err != nil {
 		log.Fatalf("new: %v", err)
 	}
 	defer p.Close()
 
-	log.Print("before loop")
+	num := 4432
 
-	for i := range 1000 {
-		log.Printf("loop #%d", i)
-		evt := handler.LoginEvent{UserID: i, Event: "login"}
-		part, off, err := p.Send(ctx, "playground.events", fmt.Sprintf("user-%d", i), evt)
+	for range 100 {
+		userID := fmt.Sprintf("%04d", num)
+		evt := handler.LoginEvent{UserID: userID, Event: events[num%3], Price: num / 2}
+		part, off, err := p.Send(ctx, topicName, userID, evt)
 		if err != nil {
 			log.Fatalf("send: %v", err)
 		}

@@ -10,6 +10,10 @@ import (
 	"github.com/bwjson/kafka/internal/handler"
 )
 
+const (
+	topicName = "users.events"
+)
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -17,8 +21,8 @@ func main() {
 	c, err := consumer.NewConsumer(
 		consumer.Config{
 			Brokers: []string{"localhost:9092"},
-			GroupID: "playground.consumer",
-			Topics:  []string{"playground.events"},
+			GroupID: "users.consumer",
+			Topics:  []string{topicName},
 		},
 		handler.Login{},
 	)
