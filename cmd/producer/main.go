@@ -12,6 +12,8 @@ import (
 func main() {
 	ctx := context.Background()
 
+	log.Print("start")
+
 	p, err := producer.NewProducer(producer.Config{
 		Brokers:  []string{"localhost:9092"},
 		ClientID: "playground-producer",
@@ -21,9 +23,12 @@ func main() {
 	}
 	defer p.Close()
 
-	for i := range 5 {
+	log.Print("before loop")
+
+	for i := range 1000 {
+		log.Printf("loop #%d", i)
 		evt := handler.LoginEvent{UserID: i, Event: "login"}
-		part, off, err := p.SendJSON(ctx, "playground.events", fmt.Sprintf("user-%d", i), evt)
+		part, off, err := p.Send(ctx, "playground.events", fmt.Sprintf("user-%d", i), evt)
 		if err != nil {
 			log.Fatalf("send: %v", err)
 		}

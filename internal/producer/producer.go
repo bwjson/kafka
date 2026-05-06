@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/twmb/franz-go/pkg/kgo"
+	"strings"
+
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 )
 
 type Config struct {
@@ -13,15 +15,15 @@ type Config struct {
 }
 
 type Producer struct {
-	cl *kgo.Client
+	cl *kafka.Producer
 }
 
 func NewProducer(cfg Config) (*Producer, error) {
-	cl, err := kgo.NewClient(
-		kgo.SeedBrokers(cfg.Brokers...),
-		kgo.ClientID(cfg.ClientID),
-		kgo.RequiredAcks(kgo.AllISRAcks()),
-	)
+	cl, err := kafka.NewProducer(&kafka.ConfigMap{
+		"bootstrap.servers": strings.Join(cfg.Brokers, ","),
+		"client.id":         cfg.ClientID,
+		"acks":              "all",
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -30,18 +32,27 @@ func NewProducer(cfg Config) (*Producer, error) {
 
 func (p *Producer) Close() { p.cl.Close() }
 
-func (p *Producer) SendJSON(ctx context.Context, topic, key string, value any) (int32, int64, error) {
+func (p *Producer) Send(_ context.Context, topic, key string, value any) (int32, int64, error) {
 	data, err := json.Marshal(value)
 	if err != nil {
 		return 0, 0, fmt.Errorf("marshal: %w", err)
 	}
 
-	rec := &kgo.Record{Topic: topic, Key: []byte(key), Value: data}
-	res := p.cl.ProduceSync(ctx, rec)
-	if err := res.FirstErr(); err != nil {
+	deliveryChan := make(chan kafka.Event, 1)
+	err = p.cl.Produce(&kafka.Message{
+		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
+		Key:            []byte(key),
+		Value:          data,
+	}, deliveryChan)
+	if err != nil {
 		return 0, 0, fmt.Errorf("produce: %w", err)
 	}
-	r := res[0].Record
 
-	return r.Partition, r.Offset, nil
+	e := <-deliveryChan
+	msg := e.(*kafka.Message)
+	if msg.TopicPartition.Error != nil {
+		return 0, 0, fmt.Errorf("delivery: %w", msg.TopicPartition.Error)
+	}
+
+	return int32(msg.TopicPartition.Partition), int64(msg.TopicPartition.Offset), nil
 }

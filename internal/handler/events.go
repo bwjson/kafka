@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 )
 
 type LoginEvent struct {
@@ -16,13 +16,13 @@ type LoginEvent struct {
 
 type Login struct{}
 
-func (Login) Handle(_ context.Context, r *kgo.Record) error {
+func (Login) Handle(_ context.Context, r *kafka.Message) error {
 	var evt LoginEvent
 	if err := json.Unmarshal(r.Value, &evt); err != nil {
 		return fmt.Errorf("unmarshal: %w", err)
 	}
 	log.Printf("login: p=%d o=%d user=%d event=%s",
-		r.Partition, r.Offset, evt.UserID, evt.Event)
+		r.TopicPartition.Partition, r.TopicPartition.Offset, evt.UserID, evt.Event)
 
 	return nil
 }

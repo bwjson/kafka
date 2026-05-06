@@ -2,18 +2,19 @@ package consumer
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"github.com/twmb/franz-go/pkg/kgo"
 	"log"
+	"strings"
+
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 )
 
 type Handler interface {
-	Handle(ctx context.Context, msg *kgo.Record) error
+	Handle(ctx context.Context, msg *kafka.Message) error
 }
 
 type Consumer struct {
-	cl      *kgo.Client
+	cl      *kafka.Consumer
 	handler Handler
 }
 
@@ -24,18 +25,22 @@ type Config struct {
 }
 
 func NewConsumer(cfg Config, handler Handler) (*Consumer, error) {
-	cl, err := kgo.NewClient(
-		kgo.SeedBrokers(cfg.Brokers...),
-		kgo.ConsumerGroup(cfg.GroupID),
-		kgo.ConsumeTopics(cfg.Topics...),
-		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
-		kgo.DisableAutoCommit(),
-	)
+	cl, err := kafka.NewConsumer(&kafka.ConfigMap{
+		"bootstrap.servers":  strings.Join(cfg.Brokers, ","),
+		"group.id":           cfg.GroupID,
+		"auto.offset.reset":  "earliest",
+		"enable.auto.commit": "false",
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create consumer: %w", err)
 	}
 
-	return &Consumer{cl: cl, handler: handler}, err
+	if err := cl.SubscribeTopics(cfg.Topics, nil); err != nil {
+		cl.Close()
+		return nil, fmt.Errorf("subscribe: %w", err)
+	}
+
+	return &Consumer{cl: cl, handler: handler}, nil
 }
 
 func (c *Consumer) Close() {
@@ -44,28 +49,28 @@ func (c *Consumer) Close() {
 
 func (c *Consumer) Run(ctx context.Context) error {
 	for {
-		fetches := c.cl.PollFetches(ctx)
-		if errors.Is(ctx.Err(), context.Canceled) {
+		select {
+		case <-ctx.Done():
 			return nil
+		default:
 		}
-		if err := fetches.Err(); err != nil {
-			log.Printf("fetch: %v", err)
+
+		event := c.cl.Poll(100)
+		if event == nil {
 			continue
 		}
 
-		var failed bool
-		fetches.EachRecord(func(r *kgo.Record) {
-			if err := c.handler.Handle(ctx, r); err != nil {
-				log.Printf("handle p=%d o=%d: %v", r.Partition, r.Offset, err)
-				failed = true
+		switch e := event.(type) {
+		case *kafka.Message:
+			if err := c.handler.Handle(ctx, e); err != nil {
+				log.Printf("handle p=%d o=%d: %v", e.TopicPartition.Partition, e.TopicPartition.Offset, err)
+				continue
 			}
-		})
-
-		if failed {
-			continue
-		}
-		if err := c.cl.CommitUncommittedOffsets(ctx); err != nil {
-			log.Printf("commit: %v", err)
+			if _, err := c.cl.CommitMessage(e); err != nil {
+				log.Printf("commit: %v", err)
+			}
+		case kafka.Error:
+			log.Printf("fetch: %v", e)
 		}
 	}
 }
