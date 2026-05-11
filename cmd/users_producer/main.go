@@ -23,7 +23,7 @@ func main() {
 	ctx := context.Background()
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	prd, err := producer.NewProducer(
+	prd, err := producer.NewKafkaProducer(
 		producer.KafkaConfig{
 			Brokers:  []string{"localhost:9092"},
 			ClientID: "users-producer",

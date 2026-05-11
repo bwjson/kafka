@@ -18,7 +18,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	c, err := consumer.NewConsumer(
+	c, err := consumer.NewKafkaConsumer(
 		consumer.KafkaConfig{
 			Brokers: []string{"localhost:9092"},
 			GroupID: "users.consumer",

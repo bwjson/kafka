@@ -17,7 +17,7 @@ type KafkaProducer struct {
 	cl *kafka.Producer
 }
 
-func NewProducer(cfg KafkaConfig) (Producer, error) {
+func NewKafkaProducer(cfg KafkaConfig) (Producer, error) {
 	cl, err := kafka.NewProducer(&kafka.ConfigMap{
 		"bootstrap.servers": strings.Join(cfg.Brokers, ","),
 		"client.id":         cfg.ClientID,
