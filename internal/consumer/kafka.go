@@ -2,14 +2,21 @@ package consumer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"github.com/bwjson/kafka/internal/producer"
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"log"
 	"strings"
 )
 
+const (
+	dlqTopicName = "users.events.dlq"
+)
+
 type KafkaConsumer struct {
 	cl      *kafka.Consumer
+	dlq     producer.Producer
 	handler Handler
 }
 
@@ -19,7 +26,7 @@ type KafkaConfig struct {
 	GroupID string
 }
 
-func NewKafkaConsumer(cfg KafkaConfig, handler Handler) (Consumer, error) {
+func NewKafkaConsumer(cfg KafkaConfig, dlq producer.Producer, handler Handler) (Consumer, error) {
 	cl, err := kafka.NewConsumer(&kafka.ConfigMap{
 		"bootstrap.servers":  strings.Join(cfg.Brokers, ","),
 		"group.id":           cfg.GroupID,
@@ -35,11 +42,12 @@ func NewKafkaConsumer(cfg KafkaConfig, handler Handler) (Consumer, error) {
 		return nil, fmt.Errorf("subscribe: %w", err)
 	}
 
-	return &KafkaConsumer{cl: cl, handler: handler}, nil
+	return &KafkaConsumer{cl: cl, dlq: dlq, handler: handler}, nil
 }
 
 func (c *KafkaConsumer) Close() {
 	c.cl.Close()
+	c.dlq.Close()
 }
 
 func (c *KafkaConsumer) Run(ctx context.Context) error {
@@ -50,15 +58,23 @@ func (c *KafkaConsumer) Run(ctx context.Context) error {
 		default:
 		}
 
-		event := c.cl.Poll(100)
-		if event == nil {
+		msg := c.cl.Poll(100)
+		if msg == nil {
 			continue
 		}
 
-		switch e := event.(type) {
+		switch e := msg.(type) {
 		case *kafka.Message:
-			if err := c.handler.Handle(ctx, e); err != nil {
+			err := c.handler.Handle(ctx, e)
+			if err != nil {
 				log.Printf("handle p=%d o=%d: %v", e.TopicPartition.Partition, e.TopicPartition.Offset, err)
+				err := c.dlq.Send(ctx, dlqTopicName, string(e.Key), json.RawMessage(e.Value))
+				if err != nil {
+					return err
+				}
+				if _, err := c.cl.CommitMessage(e); err != nil {
+					log.Printf("commit: %v", err)
+				}
 				continue
 			}
 			if _, err := c.cl.CommitMessage(e); err != nil {

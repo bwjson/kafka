@@ -49,11 +49,14 @@ func (p *KafkaProducer) Send(ctx context.Context, topic, key string, value any) 
 		return fmt.Errorf("produce: %w", err)
 	}
 
-	var msg *kafka.Message
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case msg = <-deliveryChan:
+	case event := <-deliveryChan:
+		msg, ok := event.(*kafka.Message)
+		if !ok {
+			return fmt.Errorf("unexpected type: %T", event)
+		}
 		if msg.TopicPartition.Error != nil {
 			return fmt.Errorf("delivery: %w", msg.TopicPartition.Error)
 		}

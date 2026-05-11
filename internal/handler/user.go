@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/bwjson/kafka/internal/domain"
 	"log"
@@ -20,5 +21,5 @@ func (Login) Handle(_ context.Context, r *kafka.Message) error {
 	log.Printf("login: p=%d o=%d user=%s event=%s",
 		r.TopicPartition.Partition, r.TopicPartition.Offset, evt.UserID, evt.Event)
 
-	return nil
+	return errors.New("test dlq")
 }
