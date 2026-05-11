@@ -13,18 +13,23 @@ type Handler interface {
 	Handle(ctx context.Context, msg *kafka.Message) error
 }
 
-type Consumer struct {
+type Consumer interface {
+	Run(ctx context.Context) error
+	Close()
+}
+
+type KafkaConsumer struct {
 	cl      *kafka.Consumer
 	handler Handler
 }
 
-type Config struct {
+type KafkaConfig struct {
 	Brokers []string
 	Topics  []string
 	GroupID string
 }
 
-func NewConsumer(cfg Config, handler Handler) (*Consumer, error) {
+func NewConsumer(cfg KafkaConfig, handler Handler) (Consumer, error) {
 	cl, err := kafka.NewConsumer(&kafka.ConfigMap{
 		"bootstrap.servers":  strings.Join(cfg.Brokers, ","),
 		"group.id":           cfg.GroupID,
@@ -40,14 +45,14 @@ func NewConsumer(cfg Config, handler Handler) (*Consumer, error) {
 		return nil, fmt.Errorf("subscribe: %w", err)
 	}
 
-	return &Consumer{cl: cl, handler: handler}, nil
+	return &KafkaConsumer{cl: cl, handler: handler}, nil
 }
 
-func (c *Consumer) Close() {
+func (c *KafkaConsumer) Close() {
 	c.cl.Close()
 }
 
-func (c *Consumer) Run(ctx context.Context) error {
+func (c *KafkaConsumer) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():

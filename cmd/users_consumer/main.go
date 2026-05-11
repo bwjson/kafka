@@ -19,7 +19,7 @@ func main() {
 	defer stop()
 
 	c, err := consumer.NewConsumer(
-		consumer.Config{
+		consumer.KafkaConfig{
 			Brokers: []string{"localhost:9092"},
 			GroupID: "users.consumer",
 			Topics:  []string{topicName},
